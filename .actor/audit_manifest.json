@@ -1,0 +1,38 @@
+{
+  "actorName": "UK Modern Slavery Statement Registry — Delta Monitor",
+  "actorId": "vWDvsAd2iXgVp5aC7",
+  "slug": "stefano_seggio/uk-modern-slavery-statement-registry-monitor",
+  "storeUrl": "https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor",
+  "repoAssembledFrom": "infrastructure/flagship_uk_modern_slavery_actor",
+  "repoAssembledDate": "2026-09-17",
+  "published": true,
+  "buildNumberAtRepoAssembly": "1.0.3",
+  "ppeConfig": {
+    "apifyActorStartRetained": true,
+    "apifyDefaultDatasetItemRemoved": true,
+    "customEvents": [
+      { "name": "new-statement", "price": 0.02 },
+      { "name": "statement-updated", "price": 0.01 }
+    ],
+    "verifiedAgainstConsole": true,
+    "verifiedAgainstReadme": true
+  },
+  "testCoverage": {
+    "hasTests": true,
+    "testCount": 77,
+    "testFiles": 6
+  },
+  "firstRunAnomaly": {
+    "observed": "First-ever qualifying run pushed 5 STATEMENT_UPDATED (billable) events instead of an all-free BASELINE_SNAPSHOT set.",
+    "investigationConclusion": "Ruled out a code defect, a state-persistence bug, and a KV-store-naming collision (the named KV store's readCount:0 and createdAt exactly matching run-start time proved state was genuinely empty). Most parsimonious explanation consistent with all evidence: genuine duplicate rows for the same organisation+year within the source registry's own 10,401-row bulk CSV export.",
+    "financialExposure": "5 events, $0.05, one-time",
+    "severity": "LOW — non-blocking, disclosed observation"
+  },
+  "knownRisks": [
+    "Health-check cadence risk: the registry updates on an annual cycle, so daily automated health-check runs may often find zero new/changed statements once baseline is established — expected behavior given real-world update frequency, not a defect"
+  ],
+  "constraintCompliance": {
+    "inviolableConstraint": "Core extraction/classification logic (src/deltaEngine.ts) and PPE pricing were not altered during this repo assembly.",
+    "verificationMethod": "No code changes were made to this actor in the audit that produced this manifest; file contents copied verbatim from the live production source"
+  }
+}

@@ -1,0 +1,18 @@
+{
+    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+    "actorSpecification": 1,
+    "name": "uk-modern-slavery-statement-registry-monitor",
+    "title": "UK Modern Slavery Statement Registry - Delta Monitor",
+    "description": "Delta-tracks the official UK Modern Slavery Statement Registry (gov.uk) - 34,000+ organisations, 23,500+ statements - for new statements, compliance-status changes, and missing mandatory disclosures across the six recommended topics. Sourced from the registry's own bulk CSV downloads. Pay-per-event.",
+    "version": "1.0",
+    "buildTag": "latest",
+    "minMemoryMbytes": 512,
+    "maxMemoryMbytes": 2048,
+    "meta": { "templateId": "ts-apify-only", "generatedBy": "Claude Code with Claude Sonnet 5" },
+    "inputSchema": "./input_schema.json",
+    "storages": { "dataset": "./dataset_schema.json" },
+    "output": "./output_schema.json",
+    "changelog": "../CHANGELOG.md",
+    "dockerfile": "../Dockerfile",
+    "categories": ["BUSINESS"]
+}

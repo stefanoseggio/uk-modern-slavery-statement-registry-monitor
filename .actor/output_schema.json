@@ -1,0 +1,11 @@
+{
+    "actorOutputSchemaVersion": 1,
+    "title": "Output schema of the Actor",
+    "properties": {
+        "statements": {
+            "type": "string",
+            "title": "Delta events (new/updated modern slavery statements)",
+            "template": "{{links.apiDefaultDatasetUrl}}/items"
+        }
+    }
+}

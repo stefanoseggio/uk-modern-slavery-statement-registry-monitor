@@ -1,0 +1,53 @@
+{
+    "actorSpecification": 1,
+    "fields": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "type": "object",
+        "required": ["event_type", "record_id", "statement_year", "scraped_at"],
+        "properties": {
+            "@type": { "type": "string", "enum": ["schema:Organization"] },
+            "event_id": { "type": "string" },
+            "event_type": { "type": "string", "enum": ["NEW_STATEMENT", "STATEMENT_UPDATED", "STATEMENT_UNCHANGED", "BASELINE_SNAPSHOT"] },
+            "record_id": { "type": "string" },
+            "organisation_name": { "type": ["string", "null"] },
+            "company_number": { "type": ["string", "null"] },
+            "address": { "type": ["string", "null"] },
+            "parent_name": { "type": ["string", "null"] },
+            "group_submission": { "type": "boolean" },
+            "sector_type": { "type": ["string", "null"] },
+            "organisation_sectors": { "type": "array", "items": { "type": "string" } },
+            "turnover": { "type": ["string", "null"] },
+            "statement_url": { "type": ["string", "null"] },
+            "statement_summary_url": { "type": "string" },
+            "pdf_url": { "type": ["string", "null"] },
+            "statement_year": { "type": "string" },
+            "statement_start_date": { "type": ["string", "null"] },
+            "statement_end_date": { "type": ["string", "null"] },
+            "date_approved": { "type": ["string", "null"] },
+            "last_updated": { "type": ["string", "null"] },
+            "pdf_date": { "type": ["string", "null"] },
+            "includes_org_structure": { "type": "boolean" },
+            "includes_policies": { "type": "boolean" },
+            "includes_risk_assessment": { "type": "boolean" },
+            "includes_due_diligence": { "type": "boolean" },
+            "includes_training": { "type": "boolean" },
+            "includes_goals": { "type": "boolean" },
+            "missing_disclosures": { "type": "array", "items": { "type": "string" } },
+            "is_fully_compliant": { "type": "boolean" },
+            "ilo_indicators_in_statement": { "type": "boolean" },
+            "status_fingerprint": { "type": "string" },
+            "content_fingerprint": { "type": "string" },
+            "is_new": { "type": "boolean" },
+            "scraped_at": { "type": "string" }
+        }
+    },
+    "views": {
+        "overview": {
+            "title": "Overview",
+            "transformation": {
+                "fields": ["event_type", "organisation_name", "sector_type", "turnover", "statement_year", "is_fully_compliant", "missing_disclosures", "scraped_at"]
+            },
+            "display": { "component": "table" }
+        }
+    }
+}
