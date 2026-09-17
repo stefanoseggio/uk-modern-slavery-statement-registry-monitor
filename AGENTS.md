@@ -1,4 +1,8 @@
-# Delta Engine v2 — UK Modern Slavery Statement Registry Monitor
+# AGENTS.md - UK Modern Slavery Statement Registry Monitor
+
+Technical notes for whoever (human or AI) touches this actor next.
+
+## Delta Engine v2 — UK Modern Slavery Statement Registry Monitor
 
 Status: authored 2026-09-16, applying the same reference architecture established in
 `infrastructure/flagship_ted_eu_procurement_actor/ARCHITECTURE.md` to a genuinely different real

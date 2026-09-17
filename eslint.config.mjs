@@ -3,11 +3,11 @@ import prettierConfig from 'eslint-config-prettier';
 import apifyConfig from '@apify/eslint-config/ts.js';
 
 export default [
-    { ignores: ['dist', 'node_modules', 'storage'] },
+    { ignores: ['dist', 'node_modules', 'storage', 'examples'] },
     ...apifyConfig,
     prettierConfig,
     {
-        files: ['src/**/*.ts', 'tests/**/*.ts'],
+        files: ['src/**/*.ts', 'test/**/*.ts'],
         languageOptions: {
             parserOptions: {
                 project: './tsconfig.eslint.json',
@@ -24,7 +24,7 @@ export default [
         },
     },
     {
-        files: ['tests/**/*.ts'],
+        files: ['test/**/*.ts'],
         rules: {
             // Test files legitimately construct large literal fixtures and use non-null
             // assertions when asserting on values the test itself just set up.

@@ -5,6 +5,6 @@ storage
 .git
 .gitignore
 *.log
-tests
+test
 coverage
 .github

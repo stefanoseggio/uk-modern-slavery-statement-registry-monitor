@@ -1,6 +1,10 @@
 # UK Modern Slavery Statement Registry — Delta Monitor
 
-![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen) ![License](https://img.shields.io/badge/license-MIT-blue) ![Tests](https://img.shields.io/badge/tests-77%20passing-brightgreen) ![Data source](https://img.shields.io/badge/data%20source-gov.uk%20official%20bulk%20export-003439) ![Pricing](https://img.shields.io/badge/pricing-pay--per--event-orange)
+[![Built for Apify](https://img.shields.io/badge/built%20for-Apify-00A98F)](https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor) [![Pay-Per-Event](https://img.shields.io/badge/pricing-pay--per--event%20from%20%240.01-orange)](https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor) [![TypeScript](https://img.shields.io/badge/TypeScript-6.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/) [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue)](./LICENSE)
+
+[![Run on Apify Store](https://img.shields.io/badge/Run%20on-Apify%20Store-00A98F?style=for-the-badge)](https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor)
+
+Live and public at [apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor](https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor).
 
 Delta-tracks the official UK Modern Slavery Statement Registry — 34,000+ organisations, 23,500+
 statements (real, live figures as of this actor's build date) — for new statements,
@@ -13,7 +17,7 @@ pay-per-event regulatory/compliance data fleet.
 
 The registry publishes a full CSV snapshot per year — anyone can download it. What this actor adds
 is the same zero-cost delta-monitoring discipline as the rest of this fleet
-([ARCHITECTURE.md](ARCHITECTURE.md)): **you are billed only for a statement that is new, or whose
+([AGENTS.md](AGENTS.md)): **you are billed only for a statement that is new, or whose
 compliance status genuinely changed** — never for re-confirming that nothing changed. And it goes
 one level deeper than most delta actors: a real HTTP `Content-MD5` check on the registry's own
 files means an **unchanged year is never even downloaded**, not just never re-billed.
@@ -88,6 +92,11 @@ every run) and `apify-default-dataset-item` is removed (no automatic per-write d
 the "unchanged statements cost nothing" guarantee above is enforced at both the application layer
 and the Console billing layer.*
 
+**BYOK status: none.** This actor calls no third-party API and requires no API key of any kind —
+the registry's bulk CSV exports are unauthenticated and open-licensed (see **Alerting** below for
+the fully optional Slack/Teams/generic webhook URLs, which are delivery destinations you provide,
+not credentials this actor consumes).
+
 ## Input reference
 
 See [`.actor/input_schema.json`](.actor/input_schema.json) for the full, authoritative schema.
@@ -152,7 +161,7 @@ bare registry URL. This was a real, live-discovered necessity, not a stylistic c
 group modern slavery statement can legally cover several named organisations under one shared
 `statement_summary_url` (confirmed live: one real 2027 group statement names four distinct
 organisations sharing one URL). Using the URL alone would have collapsed those into one tracked
-entity. See [ARCHITECTURE.md section 4](ARCHITECTURE.md#4-delta-engine--same-fingerprint-discipline-as-actor-1-applied-to-a-bulk-file-source).
+entity. See [AGENTS.md section 4](AGENTS.md#4-delta-engine--same-fingerprint-discipline-as-actor-1-applied-to-a-bulk-file-source).
 
 ## Alerting — Slack and Microsoft Teams, corrected against real 2026 platform status
 
@@ -186,7 +195,7 @@ tenant during this build, since none was available to test against.
 
 ## Architecture
 
-Full spec in [ARCHITECTURE.md](ARCHITECTURE.md). Summary:
+Full spec in [AGENTS.md](AGENTS.md). Summary:
 
 ```
   Actor input ──▶ src/main.ts (migrating/aborting-safe state flush)
@@ -230,27 +239,27 @@ npm test
 
 77 real, passing Vitest tests across six files:
 
-- [`tests/normalizer.test.ts`](tests/normalizer.test.ts) — CSV-row-to-statement mapping, including
+- [`test/normalizer.test.ts`](test/normalizer.test.ts) — CSV-row-to-statement mapping, including
   every real data-quality edge case found during this build (numeric `OrganisationName` fallback,
   stray quote characters, multi-line field joining, blank `CompanyNumber`, the compound-key
   shared-URL group-statement scenario, and the record-key fallback chain for blank identity
   fields).
-- [`tests/deltaEngine.test.ts`](tests/deltaEngine.test.ts) — canonicalization determinism, SHA-256
+- [`test/deltaEngine.test.ts`](test/deltaEngine.test.ts) — canonicalization determinism, SHA-256
   fingerprint stability and change-sensitivity, and the full classify/shouldDeliver state machine,
   including a regression test for the exact classify/onlyNew conflation bug found in Actor #1 and
   a regression test for the per-year `baselineComplete` scoping bug found by adversarial review in
   this actor.
-- [`tests/notifier.test.ts`](tests/notifier.test.ts) — real payload-shape assertions for all three
+- [`test/notifier.test.ts`](test/notifier.test.ts) — real payload-shape assertions for all three
   channels (mocked `fetch`, no live sends), failure-isolation tests confirming one channel's
   rejection never blocks another's delivery or throws out of the run, and escaping tests confirming
   registry-sourced (self-reported, untrusted) fields can't inject Slack mrkdwn or Adaptive Card
   markdown.
-- [`tests/csvSource.test.ts`](tests/csvSource.test.ts) — the HTTP retry/backoff logic (5xx/429
+- [`test/csvSource.test.ts`](test/csvSource.test.ts) — the HTTP retry/backoff logic (5xx/429
   retried, other 4xx passed through immediately, network errors retried), the real 404-means-null
   distinction, RFC 4180 parsing of embedded newlines, and the request-timeout `AbortSignal`.
-- [`tests/state.test.ts`](tests/state.test.ts) — Key-Value Store round-tripping, `resetState`
+- [`test/state.test.ts`](test/state.test.ts) — Key-Value Store round-tripping, `resetState`
   behavior, and the mutate-by-reference contract `routes.ts` relies on.
-- [`tests/routes.test.ts`](tests/routes.test.ts) — unit tests for the pure per-row/per-event logic
+- [`test/routes.test.ts`](test/routes.test.ts) — unit tests for the pure per-row/per-event logic
   (filters, event naming, high-value-change detection, output-record shaping) plus **integration
   tests that mock the CSV source and simulate a real API response mutation across sequential
   runs** to verify the delta trigger fires correctly - including regression tests for the
@@ -259,17 +268,18 @@ npm test
 
 ## CI/CD
 
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml): every push and pull request runs
-lint, type-check/build, and the full test suite; a push to `main` that passes all three then
-authenticates with the Apify CLI (`apify login --token`) and deploys (`apify push`) using an
-`APIFY_TOKEN` repository secret.
+[`.github/workflows/test.yaml`](.github/workflows/test.yaml): every push and pull request runs
+lint, type-check/build, and the full test suite — a public quality signal, not a deploy pipeline.
+Deployment to Apify is manual (`apify login --token` + `apify push`), matching how every actor
+across this developer's portfolio is actually shipped; see
+[`docs/GITHUB_REMOTE_SETUP.md`](docs/GITHUB_REMOTE_SETUP.md) for detail.
 
 ## What this actor deliberately does not do
 
 - **No scraping, no anti-bot layer.** The registry's bulk CSV exports are official, licensed
   (Open Government Licence v3.0), and require no authentication - there's nothing to bypass.
 - **No BLAKE3.** Same fleet-wide decision as Actor #1, for the same reason - see
-  [ARCHITECTURE.md §4](ARCHITECTURE.md#4-delta-engine--same-fingerprint-discipline-as-actor-1-applied-to-a-bulk-file-source).
+  [AGENTS.md §4](AGENTS.md#4-delta-engine--same-fingerprint-discipline-as-actor-1-applied-to-a-bulk-file-source).
 - **No classic Microsoft Teams connector support.** It's retired - see **Alerting** above.
 - **No server-side filtering.** The registry's bulk export has no query mechanism; `sectorFilter`/
   `turnoverFilter`/`onlyMissingDisclosures` are applied client-side after parsing, so they narrow

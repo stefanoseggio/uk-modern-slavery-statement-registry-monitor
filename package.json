@@ -3,6 +3,28 @@
     "version": "1.0.0",
     "type": "module",
     "description": "UK Modern Slavery Statement Registry Delta Monitor: tracks new statements, compliance-status changes, and missing mandatory disclosures across the official gov.uk registry's yearly bulk CSV downloads, pay-per-event.",
+    "keywords": [
+        "apify",
+        "actor",
+        "modern slavery",
+        "modern slavery act",
+        "modern slavery statement registry",
+        "gov.uk",
+        "esg",
+        "supplier due diligence",
+        "csddd",
+        "compliance monitoring",
+        "delta monitor",
+        "pay-per-event",
+        "kyb",
+        "b2b data",
+        "procurement compliance"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/stefanoseggio/uk-modern-slavery-statement-registry-monitor.git"
+    },
+    "homepage": "https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor",
     "engines": { "node": ">=20.0.0" },
     "dependencies": {
         "apify": "^3.7.0",

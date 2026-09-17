@@ -6,7 +6,7 @@
         "years": {
             "title": "Registry years to check",
             "type": "array",
-            "description": "Which registry years to check this run. The registry publishes one full CSV snapshot per year (2020-2027, confirmed live), each containing every statement submitted for that reporting year. Each run does a cheap HEAD request per selected year first and only downloads/parses a year's full file when its content-hash has actually changed since last run (see README/ARCHITECTURE.md) - so selecting more years costs little on unchanged runs, but the FIRST run against a newly-selected year always does a full baseline pass. Defaults to the current year only to keep a first/default run fast and bounded.",
+            "description": "Which registry years to check this run. The registry publishes one full CSV snapshot per year (2020-2027, confirmed live), each containing every statement submitted for that reporting year. Each run does a cheap HEAD request per selected year first and only downloads/parses a year's full file when its content-hash has actually changed since last run (see README/AGENTS.md) - so selecting more years costs little on unchanged runs, but the FIRST run against a newly-selected year always does a full baseline pass. Defaults to the current year only to keep a first/default run fast and bounded.",
             "editor": "select",
             "items": {
                 "type": "string",
@@ -17,7 +17,7 @@
         "sectorFilter": {
             "title": "Sector filter (optional)",
             "type": "array",
-            "description": "Deliver only statements from organisations that self-declared this sector. Real values as published by the registry: 'Private' or 'Public'. Leave empty to deliver both. This is a client-side filter applied after parsing (the registry's bulk CSV has no server-side query/filter mechanism - see ARCHITECTURE.md section 0), so it does not reduce download size, only which normalized statements are delivered.",
+            "description": "Deliver only statements from organisations that self-declared this sector. Real values as published by the registry: 'Private' or 'Public'. Leave empty to deliver both. This is a client-side filter applied after parsing (the registry's bulk CSV has no server-side query/filter mechanism - see AGENTS.md section 0), so it does not reduce download size, only which normalized statements are delivered.",
             "editor": "select",
             "items": {
                 "type": "string",
