@@ -31,17 +31,10 @@ build referenced in this repo's `.actor/audit_manifest.json` was actually deploy
 
 ## About the `APIFY_TOKEN` GitHub Actions secret
 
-A secret named `APIFY_TOKEN` was set on this GitHub repository earlier, when this repo briefly had
-an auto-deploy workflow. **It now serves no purpose** — `test.yaml` never references
-`secrets.APIFY_TOKEN`, so nothing in CI reads it. It isn't a security risk on its own (GitHub
-secrets aren't exposed to public repo visitors, only to workflow runs you control), but it's dead
-configuration. To remove it:
-
-```bash
-gh secret remove APIFY_TOKEN --repo stefanoseggio/uk-modern-slavery-statement-registry-monitor
-```
-
-This is optional cleanup, not required for anything to keep working.
+A secret named `APIFY_TOKEN` was briefly set on this GitHub repository, back when it had an
+auto-deploy workflow. `test.yaml` never referenced `secrets.APIFY_TOKEN`, so it served no purpose
+even while it existed. **It has since been removed** (confirmed via `gh secret list` against this
+repository, which returns no secrets) — no cleanup action is needed here.
 
 ## Setting up a fresh clone on a new machine
 
