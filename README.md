@@ -77,6 +77,71 @@ const { items } = await client.dataset(run.defaultDatasetId).listItems();
 items.forEach((item) => console.log(`${item.event_type}: ${item.organisation_name} - missing: ${item.missing_disclosures.join(', ')}`));
 ```
 
+## Use this from Claude Desktop, Cursor, or Windsurf (via MCP)
+
+This actor is also reachable as a tool through Apify's own hosted `@apify/actors-mcp-server` at `https://mcp.apify.com`, scoped to just this one actor via a `?tools=stefano_seggio/uk-modern-slavery-statement-registry-monitor` query string — it is not a separate "Delta Registry MCP server," and each config below connects an MCP client to this single actor, not the wider fleet. Get a token from [Apify Console → Settings → Integrations](https://console.apify.com/settings/integrations) first.
+
+### Claude Desktop
+
+Edit `%APPDATA%\Claude\claude_desktop_config.json` on Windows (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS). Claude Desktop connects via the `mcp-remote` stdio bridge, not a direct URL:
+
+```json
+{
+  "mcpServers": {
+    "delta-registry-uk-modern-slavery-statement-registry-monitor": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.apify.com/?tools=stefano_seggio/uk-modern-slavery-statement-registry-monitor",
+        "--header",
+        "Authorization: Bearer ${APIFY_TOKEN}"
+      ]
+    }
+  }
+}
+```
+
+`mcp-remote` does not expand shell environment variables inside the JSON string — paste your real token literally in place of `${APIFY_TOKEN}`, and keep this file out of version control.
+
+### Cursor
+
+Edit `.cursor/mcp.json` (project-scoped) or `~/.cursor/mcp.json` (global). Cursor uses native HTTP transport:
+
+```json
+{
+  "mcpServers": {
+    "delta-registry-uk-modern-slavery-statement-registry-monitor": {
+      "url": "https://mcp.apify.com/?tools=stefano_seggio/uk-modern-slavery-statement-registry-monitor",
+      "headers": {
+        "Authorization": "Bearer ${APIFY_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+### Windsurf
+
+Edit `~/.codeium/windsurf/mcp_config.json`. Windsurf uses `serverUrl`, not `url`:
+
+```json
+{
+  "mcpServers": {
+    "delta-registry-uk-modern-slavery-statement-registry-monitor": {
+      "serverUrl": "https://mcp.apify.com/?tools=stefano_seggio/uk-modern-slavery-statement-registry-monitor",
+      "headers": {
+        "Authorization": "Bearer ${env:APIFY_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Windsurf's `${env:...}` syntax genuinely resolves from your environment at runtime, unlike `mcp-remote` above.
+
+Want every Delta Registry actor (all 28) reachable from one closed-scope MCP config instead of connecting to each actor individually? See [`delta-registry-website/MCP_INTEGRATION.md`](https://github.com/stefanoseggio/delta-registry-website/blob/main/MCP_INTEGRATION.md).
+
 ## Pricing (pay-per-event)
 
 | Event | Price | When it fires |
@@ -150,7 +215,10 @@ See [`.actor/input_schema.json`](.actor/input_schema.json) for the full, authori
 ```
 
 This is a real record from this actor's own live verification run against the actual 2027 registry
-file — not a fabricated example.
+file — not a fabricated example. Each dataset item also carries five date fields not shown above
+(`statement_start_date`, `statement_end_date`, `date_approved`, `last_updated`, `pdf_date`) —
+omitted only because they were null for this particular record. The full field list is in
+[`.actor/dataset_schema.json`](.actor/dataset_schema.json).
 
 `event_id` is a SHA-1 idempotency key over `(record_id, event_type, status_fingerprint,
 content_fingerprint)` — a retried delivery of the same underlying event always reproduces the same
