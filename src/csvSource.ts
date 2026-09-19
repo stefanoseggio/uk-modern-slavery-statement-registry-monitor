@@ -12,16 +12,32 @@ const DOWNLOAD_BASE = 'https://downloads.modern-slavery-statement-registry.servi
 
 const USER_AGENT = 'DeltaRegistryUKModernSlaveryMonitor/1.0 (+https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor)';
 
-const MAX_RETRY_ATTEMPTS = 5;
+/**
+ * Sized against this actor's own defaultRunOptions.timeoutSecs = 300 (confirmed live via
+ * `GET /v2/acts/stefano_seggio~uk-modern-slavery-statement-registry-monitor`), not chosen in
+ * isolation. Found by a real-code audit: with the previous values (5 attempts x 60s per-attempt
+ * timeout), a SINGLE fetchWithRetry call whose every attempt genuinely hangs (a stalled
+ * connection, not a slow-but-completing one) already cost 5 x 60,000ms = 300,000ms of attempt
+ * time alone, before even adding the ~19.5s of inter-attempt backoff - i.e. one HEAD or GET call,
+ * by itself, could exceed the actor's entire 300s run budget with no CSV downloaded or parsed yet.
+ * That is worse than it sounds here because `processYear` awaits up to two such calls per year
+ * (HEAD then GET) and `run()` awaits `processYear` for every selected year in sequence.
+ *
+ * With these tightened values (3 attempts x 30s per-attempt timeout):
+ *   worst-case single call = 3 x 30,000ms (attempts) + backoffDelay(0)+backoffDelay(1) (2 gaps
+ *                             before attempts 2 and 3, each up to base*2^n*1.3 - see backoffDelay)
+ *                          <= 90,000ms + (1,300ms + 2,600ms) = 93,900ms (~94s, ~31% of the 300s budget)
+ *   worst-case one year (HEAD then GET back-to-back, both maxed out) = ~187.8s (~63% of budget),
+ *     leaving genuine margin for CSV parsing and row processing (both fast, local, in-memory work)
+ *     even for the default single-year run.
+ * 30s per attempt is still generous versus the "a few seconds" real transfer time this actor's
+ * live verification measured for the largest real year file (~15MB) - this tightens the
+ * pathological-hang tail, it does not touch the healthy-network case at all.
+ */
+const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
-/**
- * A GET on the largest real year file (~15MB) completed in a few seconds during this actor's live
- * verification; 60s is generous headroom, not a tight bound. Found by adversarial-security review:
- * without this, a request that hangs (a stalled connection, not just a slow one) would block
- * indefinitely with no way to abort, since fetch has no default timeout.
- */
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 function csvUrl(year: RegistryYear): string {
     return `${DOWNLOAD_BASE}/StatementSummaries${year}.csv`;
