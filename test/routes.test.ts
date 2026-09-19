@@ -4,6 +4,10 @@ import { classify, normalizeStatement } from '../src/deltaEngine.js';
 import type { ActorInput, DeltaState, RawStatementRow } from '../src/types.js';
 
 const pushedRecords: { record: unknown; eventName?: string }[] = [];
+// null by default (no real platform timeout deadline) - matches today's behaviour where the
+// per-run time-budget guard in routes.ts is skipped outside a real Actor run; individual tests
+// override this to a concrete Date to exercise the guard itself.
+let mockTimeoutAt: Date | null = null;
 
 vi.mock('apify', () => ({
     Actor: {
@@ -11,6 +15,7 @@ vi.mock('apify', () => ({
             pushedRecords.push({ record, eventName });
             return {};
         }),
+        getEnv: vi.fn(() => ({ timeoutAt: mockTimeoutAt })),
     },
     log: { info: vi.fn(), warning: vi.fn(), error: vi.fn() },
 }));
@@ -20,6 +25,10 @@ const fetchYearStatements = vi.fn();
 vi.mock('../src/csvSource.js', () => ({
     fetchYearContentHash: (...args: unknown[]) => fetchYearContentHash(...args),
     fetchYearStatements: (...args: unknown[]) => fetchYearStatements(...args),
+    // Mirrors csvSource.ts's real computed value for MAX_RETRY_ATTEMPTS=4/REQUEST_TIMEOUT_MS=20_000
+    // (4 * 20_000ms requests + (1_000 + 2_000 + 4_000) * 1.3 max-jitter backoff = 89_100ms), so
+    // routes.ts's own per-run time-budget guard is exercised against real numbers, not NaN/undefined.
+    MAX_FETCH_WITH_RETRY_DURATION_MS: 89_100,
 }));
 
 const { computeEventId, eventNameFor, isHighValueChange, matchesFilters, run, toOutputRecord } = await import('../src/routes.js');
@@ -62,6 +71,7 @@ afterEach(() => {
     pushedRecords.length = 0;
     fetchYearContentHash.mockReset();
     fetchYearStatements.mockReset();
+    mockTimeoutAt = null;
 });
 
 describe('matchesFilters', () => {
@@ -245,5 +255,50 @@ describe('run (integration - mocked csvSource, real classify/normalize/state pip
         expect((publicPush!.record as { event_type: string }).event_type).toBe('STATEMENT_UNCHANGED');
         expect(publicPush!.eventName).toBeUndefined(); // uncharged
         expect(stats2.byEventType.NEW_STATEMENT).toBeUndefined();
+    });
+});
+
+describe('run - per-run cumulative time-budget guard (fleet-wide timeout-budget audit regression)', () => {
+    it('does not attempt ANY year - not even the first - once too little real time remains before the platform timeout for one more worst case', async () => {
+        const state = emptyState();
+        fetchYearContentHash.mockResolvedValue('hash==');
+        fetchYearStatements.mockResolvedValue([baseRow()]);
+
+        // A year's own worst case is 2 * MAX_FETCH_WITH_RETRY_DURATION_MS (89_100ms) = 178_200ms,
+        // plus a 30_000ms safety margin = 208_200ms required. Only 100s left is well under that -
+        // starting a year here risks a real, hard platform kill mid-fetch, so the guard must refuse
+        // to start it at all rather than only stopping between years.
+        mockTimeoutAt = new Date(Date.now() + 100_000);
+
+        const stats = await run({ years: ['2026', '2025'], onlyNew: false } as ActorInput, state);
+
+        expect(fetchYearContentHash).not.toHaveBeenCalled();
+        expect(stats.yearsChecked).toBe(0);
+    });
+
+    it('processes every selected year normally when this run has just started and the full budget remains', async () => {
+        const state = emptyState();
+        fetchYearContentHash.mockResolvedValue('hash==');
+        fetchYearStatements.mockResolvedValue([baseRow()]);
+
+        mockTimeoutAt = new Date(Date.now() + 290_000); // this actor's own ~300s run budget, fresh
+
+        const stats = await run({ years: ['2026', '2025'], onlyNew: false } as ActorInput, state);
+
+        expect(fetchYearContentHash).toHaveBeenCalledTimes(2);
+        expect(stats.yearsChecked).toBe(2);
+    });
+
+    it('processes every selected year when there is no known platform timeout (e.g. a local/test run) - unchanged from before this guard existed', async () => {
+        const state = emptyState();
+        fetchYearContentHash.mockResolvedValue('hash==');
+        fetchYearStatements.mockResolvedValue([baseRow()]);
+
+        mockTimeoutAt = null;
+
+        const stats = await run({ years: ['2026', '2025'], onlyNew: false } as ActorInput, state);
+
+        expect(fetchYearContentHash).toHaveBeenCalledTimes(2);
+        expect(stats.yearsChecked).toBe(2);
     });
 });

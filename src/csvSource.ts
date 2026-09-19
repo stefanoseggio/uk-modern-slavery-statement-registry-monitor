@@ -55,6 +55,24 @@ function backoffDelay(attempt: number): number {
     return exponential + jitter;
 }
 
+/**
+ * The real worst-case wall-clock duration of one `fetchWithRetry` call - every attempt timing out
+ * and every backoff hitting its full jitter - computed from the actual constants above rather than
+ * hand-copied, so it can never silently drift out of sync with them again (see REQUEST_TIMEOUT_MS's
+ * comment for the fleet-wide recurrence this guards against). Exported so callers that fan out
+ * across multiple such calls (routes.ts processes each registry year as one HEAD then, when
+ * changed, one GET - and a single run can select several years) can size their own cumulative
+ * per-run time-budget guard off the same real numbers instead of a second guessed constant.
+ */
+export const MAX_FETCH_WITH_RETRY_DURATION_MS = (() => {
+    let total = 0;
+    for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        if (attempt > 0) total += Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS) * 1.3;
+        total += REQUEST_TIMEOUT_MS;
+    }
+    return total;
+})();
+
 async function fetchWithRetry(url: string, method: 'HEAD' | 'GET'): Promise<Response> {
     let lastError: Error | undefined;
     for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
