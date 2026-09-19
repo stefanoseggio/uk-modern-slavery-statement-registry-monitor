@@ -2,14 +2,41 @@ import { createHash } from 'node:crypto';
 
 import { Actor, log } from 'apify';
 
-import { fetchYearContentHash, fetchYearStatements } from './csvSource.js';
-import { classify, isFullyCompliant, missingDisclosures, normalizeStatement, shouldDeliver, toStoredFingerprint } from './deltaEngine.js';
+import { fetchYearContentHash, fetchYearStatements, MAX_FETCH_WITH_RETRY_DURATION_MS } from './csvSource.js';
+import {
+    classify,
+    isFullyCompliant,
+    missingDisclosures,
+    normalizeStatement,
+    shouldDeliver,
+    toStoredFingerprint,
+} from './deltaEngine.js';
 import { notifyAllChannels } from './notifier.js';
 import { recordSeen, recordYearChecked } from './state.js';
-import type { ActorInput, ClassifiedEvent, DeltaState, NormalizedStatement, OutputRecord, RawStatementRow, RegistryYear } from './types.js';
+import type {
+    ActorInput,
+    ClassifiedEvent,
+    DeltaState,
+    NormalizedStatement,
+    OutputRecord,
+    RawStatementRow,
+    RegistryYear,
+} from './types.js';
 
 const EVENT_NEW_STATEMENT = 'new-statement';
 const EVENT_STATEMENT_UPDATED = 'statement-updated';
+
+/**
+ * Worst-case wall-clock cost of processing ONE registry year: a HEAD check
+ * (`fetchYearContentHash`) followed, when the content actually changed, by a full GET+parse
+ * (`fetchYearStatements`) - two independent `fetchWithRetry` sequences, each able to run up to
+ * MAX_FETCH_WITH_RETRY_DURATION_MS in the worst case. Parsing/normalizing/pushing/notifying a
+ * year's rows is comparatively fast (real years observed live at a few seconds for the full file)
+ * and isn't counted here - SAFETY_MARGIN_MS below covers that plus the platform's own run
+ * teardown.
+ */
+const MAX_YEAR_DURATION_MS = MAX_FETCH_WITH_RETRY_DURATION_MS * 2;
+const SAFETY_MARGIN_MS = 30_000;
 
 export interface RunStats {
     totalPushed: number;
@@ -21,7 +48,9 @@ export interface RunStats {
 
 export function computeEventId(classified: ClassifiedEvent): string {
     return createHash('sha1')
-        .update(`${classified.statement.recordId}|${classified.eventType}|${classified.statusFingerprint}|${classified.contentFingerprint}`)
+        .update(
+            `${classified.statement.recordId}|${classified.eventType}|${classified.statusFingerprint}|${classified.contentFingerprint}`,
+        )
         .digest('hex');
 }
 
@@ -104,14 +133,23 @@ export function matchesFilters(statement: NormalizedStatement, input: ActorInput
     return true;
 }
 
-async function processRow(row: RawStatementRow, year: RegistryYear, state: DeltaState, input: ActorInput, scrapedAt: string, stats: RunStats): Promise<void> {
+async function processRow(
+    row: RawStatementRow,
+    year: RegistryYear,
+    state: DeltaState,
+    input: ActorInput,
+    scrapedAt: string,
+    stats: RunStats,
+): Promise<void> {
     const onlyNew = input.onlyNew ?? true;
 
     let statement: NormalizedStatement;
     try {
         statement = normalizeStatement(row);
     } catch (error) {
-        log.warning(`Skipping one row that could not be normalized: ${error instanceof Error ? error.message : String(error)}`);
+        log.warning(
+            `Skipping one row that could not be normalized: ${error instanceof Error ? error.message : String(error)}`,
+        );
         return;
     }
 
@@ -138,7 +176,9 @@ async function processRow(row: RawStatementRow, year: RegistryYear, state: Delta
 
     const record = toOutputRecord(classified, scrapedAt);
     const eventName = eventNameFor(classified.eventType);
-    const pushResult = eventName ? await Actor.pushData(record, eventName) : ({} as { eventChargeLimitReached?: boolean });
+    const pushResult = eventName
+        ? await Actor.pushData(record, eventName)
+        : ({} as { eventChargeLimitReached?: boolean });
     if (!eventName) await Actor.pushData(record);
 
     // eslint-disable-next-line no-param-reassign
@@ -147,7 +187,14 @@ async function processRow(row: RawStatementRow, year: RegistryYear, state: Delta
     stats.byEventType[classified.eventType] = (stats.byEventType[classified.eventType] ?? 0) + 1;
 
     if (isHighValueChange(classified, previousStatusFingerprint)) {
-        await notifyAllChannels({ webhookUrl: input.webhookUrl, slackWebhookUrl: input.slackWebhookUrl, teamsWebhookUrl: input.teamsWebhookUrl }, record);
+        await notifyAllChannels(
+            {
+                webhookUrl: input.webhookUrl,
+                slackWebhookUrl: input.slackWebhookUrl,
+                teamsWebhookUrl: input.teamsWebhookUrl,
+            },
+            record,
+        );
     }
 
     // Only commit the new fingerprint for a row that was successfully pushed (or filtered out
@@ -162,13 +209,21 @@ async function processRow(row: RawStatementRow, year: RegistryYear, state: Delta
     }
 }
 
-async function processYear(year: RegistryYear, state: DeltaState, input: ActorInput, scrapedAt: string, stats: RunStats): Promise<void> {
+async function processYear(
+    year: RegistryYear,
+    state: DeltaState,
+    input: ActorInput,
+    scrapedAt: string,
+    stats: RunStats,
+): Promise<void> {
     const cached = state.yearCache[year];
     let contentMd5: string | null;
     try {
         contentMd5 = await fetchYearContentHash(year);
     } catch (error) {
-        log.warning(`Could not check registry year ${year} (HEAD request failed): ${error instanceof Error ? error.message : String(error)}. Skipping this year for this run.`);
+        log.warning(
+            `Could not check registry year ${year} (HEAD request failed): ${error instanceof Error ? error.message : String(error)}. Skipping this year for this run.`,
+        );
         return;
     }
 
@@ -179,7 +234,9 @@ async function processYear(year: RegistryYear, state: DeltaState, input: ActorIn
         // Also covers the extremely unlikely case of a previously-published year disappearing:
         // rather than proceed to a download that would also 404, skip cleanly this run.
         if (cached !== undefined) {
-            log.warning(`Registry year ${year} previously had cached content but now returns no content-md5 (real 404 or missing header) - skipping this run rather than treating it as unchanged.`);
+            log.warning(
+                `Registry year ${year} previously had cached content but now returns no content-md5 (real 404 or missing header) - skipping this run rather than treating it as unchanged.`,
+            );
         }
         return;
     }
@@ -188,16 +245,24 @@ async function processYear(year: RegistryYear, state: DeltaState, input: ActorIn
     stats.yearsChecked += 1;
 
     if (cached?.contentMd5 === contentMd5) {
-        log.info(`Registry year ${year}: content-hash unchanged since last run (${contentMd5}) - skipping download entirely.`);
+        log.info(
+            `Registry year ${year}: content-hash unchanged since last run (${contentMd5}) - skipping download entirely.`,
+        );
         // eslint-disable-next-line no-param-reassign
         stats.yearsSkippedUnchanged += 1;
         // Preserve whatever baselineComplete already was - an unchanged year that was already
         // fully baselined stays baselined; one that never finished (or was never seen) stays not.
-        recordYearChecked(state, year, { contentMd5, lastChecked: scrapedAt, baselineComplete: cached?.baselineComplete ?? false });
+        recordYearChecked(state, year, {
+            contentMd5,
+            lastChecked: scrapedAt,
+            baselineComplete: cached?.baselineComplete ?? false,
+        });
         return;
     }
 
-    log.info(`Registry year ${year}: content-hash ${cached ? 'changed' : 'not yet cached'} - downloading and processing full file.`);
+    log.info(
+        `Registry year ${year}: content-hash ${cached ? 'changed' : 'not yet cached'} - downloading and processing full file.`,
+    );
     let rows: RawStatementRow[];
     try {
         rows = await fetchYearStatements(year);
@@ -206,7 +271,9 @@ async function processYear(year: RegistryYear, state: DeltaState, input: ActorIn
         // independent years in `years` are still worth attempting. Found by adversarial review:
         // this GET path previously had no try/catch, unlike the HEAD check just above, so a
         // single flaky year failed the entire Actor run instead of being skipped like a 404 is.
-        log.warning(`Could not download or parse registry year ${year}: ${error instanceof Error ? error.message : String(error)}. Skipping this year for this run - already-cached years and other selected years are unaffected.`);
+        log.warning(
+            `Could not download or parse registry year ${year}: ${error instanceof Error ? error.message : String(error)}. Skipping this year for this run - already-cached years and other selected years are unaffected.`,
+        );
         return;
     }
     log.info(`Registry year ${year}: parsed ${rows.length} real statement rows.`);
@@ -234,11 +301,39 @@ async function processYear(year: RegistryYear, state: DeltaState, input: ActorIn
 
 export async function run(input: ActorInput, state: DeltaState): Promise<RunStats> {
     const scrapedAt = new Date().toISOString();
-    const stats: RunStats = { totalPushed: 0, stopped: false, yearsChecked: 0, yearsSkippedUnchanged: 0, byEventType: {} };
+    const stats: RunStats = {
+        totalPushed: 0,
+        stopped: false,
+        yearsChecked: 0,
+        yearsSkippedUnchanged: 0,
+        byEventType: {},
+    };
     const years = input.years && input.years.length > 0 ? input.years : (['2026'] as RegistryYear[]);
+
+    // Per-run cumulative time-budget guard (fleet-wide timeout-budget audit, 2026-09-19
+    // recurrence): `years` lets one run select several independent registry years, each doing its
+    // own HEAD-then-GET fetchWithRetry sequence. Even with a single such call's worst case now
+    // comfortably under this actor's run timeout on its own (see csvSource.ts), several unlucky
+    // years compounding in the same run still could not be - so before starting each year, check
+    // there's real budget left for another year's worst case. `Actor.getEnv().timeoutAt` is the
+    // platform's own authoritative kill time for THIS run (it reflects whatever timeoutSecs the
+    // run was actually started with, not just the Actor's configured default), so this guard stays
+    // correct even if run options are overridden. It's null outside a real platform run (e.g. this
+    // actor's own unit tests) - the guard is skipped rather than guessed at, unchanged from today.
+    const { timeoutAt } = Actor.getEnv();
 
     for (const year of years) {
         if (stats.stopped) break;
+        if (timeoutAt) {
+            const remainingMs = timeoutAt.getTime() - Date.now();
+            if (remainingMs < MAX_YEAR_DURATION_MS + SAFETY_MARGIN_MS) {
+                const remainingYears = years.slice(years.indexOf(year));
+                log.warning(
+                    `Stopping before registry year ${year}: only ~${Math.round(remainingMs / 1000)}s remain before this run's platform timeout - not enough for another year's worst-case HEAD+GET retry sequence (~${Math.round(MAX_YEAR_DURATION_MS / 1000)}s) plus a ${Math.round(SAFETY_MARGIN_MS / 1000)}s safety margin. Remaining year(s) (${remainingYears.join(', ')}) were not attempted this run and will be picked up on the next one - already-processed years and rows this run are unaffected.`,
+                );
+                break;
+            }
+        }
         await processYear(year, state, input, scrapedAt, stats);
     }
 

@@ -20,8 +20,8 @@ afterEach(() => {
 
 /**
  * Runs `work` while auto-advancing fake timers, so the real 1s-30s exponential backoff between
- * retries doesn't make this suite slow. A single large advance (well beyond the ~23s maximum
- * cumulative backoff across all 5 real retry attempts) flushes every pending sleep in order;
+ * retries doesn't make this suite slow. A single large advance (well beyond the ~9.1s maximum
+ * cumulative backoff across all 4 real retry attempts) flushes every pending sleep in order;
  * `advanceTimersByTimeAsync` also drains microtasks between timer callbacks, so this correctly
  * unblocks a `fetchWithRetry` call regardless of how many retries it actually performs.
  */
@@ -104,7 +104,7 @@ describe('fetchYearContentHash', () => {
         vi.stubGlobal('fetch', fetchMock);
 
         await expect(withFakeRetryTimers(async () => fetchYearContentHash('2026'))).rejects.toThrow(/500/);
-        expect(fetchMock).toHaveBeenCalledTimes(5); // MAX_RETRY_ATTEMPTS
+        expect(fetchMock).toHaveBeenCalledTimes(4); // MAX_RETRY_ATTEMPTS
     });
 
     it('passes an AbortController signal so a hung request can be aborted (regression test for the "no timeout" gap found by adversarial-security review)', async () => {
