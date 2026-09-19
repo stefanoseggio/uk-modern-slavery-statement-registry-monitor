@@ -12,36 +12,32 @@ const DOWNLOAD_BASE = 'https://downloads.modern-slavery-statement-registry.servi
 
 const USER_AGENT = 'DeltaRegistryUKModernSlaveryMonitor/1.0 (+https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor)';
 
-const MAX_RETRY_ATTEMPTS = 4;
+/**
+ * Sized against this actor's own defaultRunOptions.timeoutSecs = 300 (confirmed live via
+ * `GET /v2/acts/stefano_seggio~uk-modern-slavery-statement-registry-monitor`), not chosen in
+ * isolation. Found by a real-code audit: with the previous values (5 attempts x 60s per-attempt
+ * timeout), a SINGLE fetchWithRetry call whose every attempt genuinely hangs (a stalled
+ * connection, not a slow-but-completing one) already cost 5 x 60,000ms = 300,000ms of attempt
+ * time alone, before even adding the ~19.5s of inter-attempt backoff - i.e. one HEAD or GET call,
+ * by itself, could exceed the actor's entire 300s run budget with no CSV downloaded or parsed yet.
+ * That is worse than it sounds here because `processYear` awaits up to two such calls per year
+ * (HEAD then GET) and `run()` awaits `processYear` for every selected year in sequence.
+ *
+ * With these tightened values (3 attempts x 30s per-attempt timeout):
+ *   worst-case single call = 3 x 30,000ms (attempts) + backoffDelay(0)+backoffDelay(1) (2 gaps
+ *                             before attempts 2 and 3, each up to base*2^n*1.3 - see backoffDelay)
+ *                          <= 90,000ms + (1,300ms + 2,600ms) = 93,900ms (~94s, ~31% of the 300s budget)
+ *   worst-case one year (HEAD then GET back-to-back, both maxed out) = ~187.8s (~63% of budget),
+ *     leaving genuine margin for CSV parsing and row processing (both fast, local, in-memory work)
+ *     even for the default single-year run.
+ * 30s per attempt is still generous versus the "a few seconds" real transfer time this actor's
+ * live verification measured for the largest real year file (~15MB) - this tightens the
+ * pathological-hang tail, it does not touch the healthy-network case at all.
+ */
+const MAX_RETRY_ATTEMPTS = 3;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
-/**
- * A GET on the largest real year file (~15MB) completed in a few seconds during this actor's live
- * verification, so 20s per attempt is still generous headroom, not a tight bound. Found by
- * adversarial-security review: without this, a request that hangs (a stalled connection, not just
- * a slow one) would block indefinitely with no way to abort, since fetch has no default timeout.
- *
- * Kept deliberately short (fleet-wide timeout-budget audit, 2026-09-19 recurrence): this actor's
- * own `defaultRunOptions.timeoutSecs` is 300s. A single `fetchWithRetry` call's real worst case is
- * MAX_RETRY_ATTEMPTS request timeouts plus the exponential-backoff (with up to 30% jitter) waited
- * between them:
- *   attempt 1:                                    20_000ms request
- *   attempt 2: +  1_000ms * 1.3 max backoff  +     20_000ms request
- *   attempt 3: +  2_000ms * 1.3 max backoff  +     20_000ms request
- *   attempt 4: +  4_000ms * 1.3 max backoff  +     20_000ms request
- *   = 4 * 20_000 + (1_300 + 2_600 + 5_200) = 80_000 + 9_100 = 89_100ms (~89s)
- * That comfortably fits under the 300s run timeout with real margin (~70%), even before
- * `fetchYearContentHash`'s HEAD and `fetchYearStatements`'s GET are each their own such call, and
- * `years` can select several independent years per run - see MAX_FETCH_WITH_RETRY_DURATION_MS and
- * the per-run cumulative time-budget guard in routes.ts, which exists precisely because per-call
- * margin alone doesn't bound a multi-year run.
- *
- * The previous values here (MAX_RETRY_ATTEMPTS=5, REQUEST_TIMEOUT_MS=60_000) gave a single call's
- * own worst case of ~319.5s - already exceeding the 300s run timeout on its own, before any
- * multi-year compounding. An earlier fleet-wide timeout-budget pass had covered other actors but
- * left this actor's numbers untightened; this is that recurrence being fixed for real.
- */
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 30_000;
 
 function csvUrl(year: RegistryYear): string {
     return `${DOWNLOAD_BASE}/StatementSummaries${year}.csv`;
