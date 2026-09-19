@@ -12,16 +12,36 @@ const DOWNLOAD_BASE = 'https://downloads.modern-slavery-statement-registry.servi
 
 const USER_AGENT = 'DeltaRegistryUKModernSlaveryMonitor/1.0 (+https://apify.com/stefano_seggio/uk-modern-slavery-statement-registry-monitor)';
 
-const MAX_RETRY_ATTEMPTS = 5;
+const MAX_RETRY_ATTEMPTS = 4;
 const BASE_BACKOFF_MS = 1000;
 const MAX_BACKOFF_MS = 30_000;
 /**
  * A GET on the largest real year file (~15MB) completed in a few seconds during this actor's live
- * verification; 60s is generous headroom, not a tight bound. Found by adversarial-security review:
- * without this, a request that hangs (a stalled connection, not just a slow one) would block
- * indefinitely with no way to abort, since fetch has no default timeout.
+ * verification, so 20s per attempt is still generous headroom, not a tight bound. Found by
+ * adversarial-security review: without this, a request that hangs (a stalled connection, not just
+ * a slow one) would block indefinitely with no way to abort, since fetch has no default timeout.
+ *
+ * Kept deliberately short (fleet-wide timeout-budget audit, 2026-09-19 recurrence): this actor's
+ * own `defaultRunOptions.timeoutSecs` is 300s. A single `fetchWithRetry` call's real worst case is
+ * MAX_RETRY_ATTEMPTS request timeouts plus the exponential-backoff (with up to 30% jitter) waited
+ * between them:
+ *   attempt 1:                                    20_000ms request
+ *   attempt 2: +  1_000ms * 1.3 max backoff  +     20_000ms request
+ *   attempt 3: +  2_000ms * 1.3 max backoff  +     20_000ms request
+ *   attempt 4: +  4_000ms * 1.3 max backoff  +     20_000ms request
+ *   = 4 * 20_000 + (1_300 + 2_600 + 5_200) = 80_000 + 9_100 = 89_100ms (~89s)
+ * That comfortably fits under the 300s run timeout with real margin (~70%), even before
+ * `fetchYearContentHash`'s HEAD and `fetchYearStatements`'s GET are each their own such call, and
+ * `years` can select several independent years per run - see MAX_FETCH_WITH_RETRY_DURATION_MS and
+ * the per-run cumulative time-budget guard in routes.ts, which exists precisely because per-call
+ * margin alone doesn't bound a multi-year run.
+ *
+ * The previous values here (MAX_RETRY_ATTEMPTS=5, REQUEST_TIMEOUT_MS=60_000) gave a single call's
+ * own worst case of ~319.5s - already exceeding the 300s run timeout on its own, before any
+ * multi-year compounding. An earlier fleet-wide timeout-budget pass had covered other actors but
+ * left this actor's numbers untightened; this is that recurrence being fixed for real.
  */
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 20_000;
 
 function csvUrl(year: RegistryYear): string {
     return `${DOWNLOAD_BASE}/StatementSummaries${year}.csv`;
@@ -38,6 +58,24 @@ function backoffDelay(attempt: number): number {
     const jitter = Math.random() * exponential * 0.3;
     return exponential + jitter;
 }
+
+/**
+ * The real worst-case wall-clock duration of one `fetchWithRetry` call - every attempt timing out
+ * and every backoff hitting its full jitter - computed from the actual constants above rather than
+ * hand-copied, so it can never silently drift out of sync with them again (see REQUEST_TIMEOUT_MS's
+ * comment for the fleet-wide recurrence this guards against). Exported so callers that fan out
+ * across multiple such calls (routes.ts processes each registry year as one HEAD then, when
+ * changed, one GET - and a single run can select several years) can size their own cumulative
+ * per-run time-budget guard off the same real numbers instead of a second guessed constant.
+ */
+export const MAX_FETCH_WITH_RETRY_DURATION_MS = (() => {
+    let total = 0;
+    for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
+        if (attempt > 0) total += Math.min(BASE_BACKOFF_MS * 2 ** (attempt - 1), MAX_BACKOFF_MS) * 1.3;
+        total += REQUEST_TIMEOUT_MS;
+    }
+    return total;
+})();
 
 async function fetchWithRetry(url: string, method: 'HEAD' | 'GET'): Promise<Response> {
     let lastError: Error | undefined;
